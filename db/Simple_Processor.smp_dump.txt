@@ -1,0 +1,7 @@
+
+State Machine - |Simple_Processor|Processor:SIMPLE_Processor|fsm:control_Unit|tstep_q
+Name tstep_q.t3 tstep_q.t2 tstep_q.t1 tstep_q.t0 
+tstep_q.t0 0 0 0 0 
+tstep_q.t1 0 0 1 1 
+tstep_q.t2 0 1 0 1 
+tstep_q.t3 1 0 0 1 

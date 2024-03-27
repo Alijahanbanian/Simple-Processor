@@ -1,0 +1,393 @@
+--*********************************************
+-- Ali jahanbanian - 9811307
+-- File: Simple_Processor.vhd
+-- Design Units:
+--		input: din, reset, clk, run 
+--		output:
+--		Buffer: done, bus_wires
+-- Version VHDL: Standard 2008
+--*******************************************************	
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+
+PACKAGE register_file IS
+	CONSTANT NOREG	:	INTEGER := 8;							-- NOREG : Number Of Register
+	CONSTANT NORB	:   INTEGER := 9;							-- NORB  : Number Of Register Bits
+	CONSTANT NOBB	:	INTEGER := 9;							-- NOBB  : Number Of Bus Bits
+	TYPE reg_file_type IS ARRAY (NOREG - 1 DOWNTO 0) OF
+		STD_LOGIC_VECTOR(NORB - 1 DOWNTO 0);
+		
+END PACKAGE register_file;
+--*******************************************************
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE WORK.register_file.ALL;
+
+ENTITY Processor IS
+	PORT
+	(
+		din					: IN STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+		reset, clk, run		: IN STD_LOGIC;
+		done				: OUT STD_LOGIC;
+		bus_wires			: OUT STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0)
+	);
+END Processor;
+
+ARCHITECTURE Beh OF Processor IS
+
+	COMPONENT regn
+		PORT
+		(
+			r				: IN STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+			rin, clk		: IN STD_LOGIC;
+			q				: OUT STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0)
+		);
+	END COMPONENT;
+	COMPONENT addersub
+		PORT
+		(
+			add_sub			: IN STD_LOGIC ;
+			dataa			: IN STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0);
+			datab			: IN STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0);
+			result			: OUT STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0)
+		);
+	END COMPONENT;
+	COMPONENT mux
+		PORT
+		(
+			mux_selector	: IN STD_LOGIC_VECTOR(NOREG + 1 DOWNTO 0);
+			r				: IN reg_file_type;
+			g 				: IN STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+			din				: IN STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+			bus_wires		: OUT STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0)
+		);
+	END COMPONENT;
+	COMPONENT FSM
+		PORT
+		(
+			run, clk, reset			: IN STD_LOGIC;
+			ir 						: IN  STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+			done, ain, gin, gout	: OUT STD_LOGIC;
+			add_sub, irin, dinout	: OUT STD_LOGIC;
+			rin, rout				: OUT STD_LOGIC_VECTOR(NOREG - 1 DOWNTO 0)
+		);
+	 END COMPONENT;
+
+	SIGNAL rin, rout									: STD_LOGIC_VECTOR(NOREG - 1 DOWNTO 0);
+	SIGNAL gin, gout, add_sub, ain, irin, dinout 		: STD_LOGIC;
+	SIGNAL a, g, as_g									: STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+	SIGNAL ir											: STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+	SIGNAL mux_selector									: STD_LOGIC_VECTOR(NOREG + 1 DOWNTO 0);
+	SIGNAL BUS_Signal									: STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+	SIGNAL reg 											: reg_file_type;
+BEGIN
+
+	mux_selector <= dinout & gout & rout;
+	multiplexer 	: mux PORT MAP (mux_selector,reg, g,din ,BUS_Signal);
+	gen_reg:
+		FOR i IN NOREG - 1 DOWNTO 0 GENERATE
+			R : regn PORT MAP (BUS_Signal, rin(i), clk, reg(i));
+	END GENERATE gen_reg;
+reg_A  			: regn PORT MAP (BUS_Signal, ain, clk, a);
+reg_IR 			: regn PORT MAP (din, irin, clk, ir);
+addsub	 		: addersub PORT MAP (add_sub, a, BUS_Signal, as_g);
+reg_g  			: regn PORT MAP (as_g, gin, clk, g);
+control_Unit	: FSM PORT MAP (run, clk, reset, ir, done, ain, gin, gout, add_sub, irin, dinout, rin, rout);
+	
+bus_wires <= BUS_Signal;
+
+End Beh;
+--///////////////////////////////////////////////////
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE WORK.register_file.ALL;
+
+ENTITY dec3to8 IS
+	PORT
+	(
+		w					: IN STD_LOGIC_VECTOR(2 DOWNTO 0);
+		en					: IN STD_LOGIC;
+		y					: OUT STD_LOGIC_VECTOR(7 DOWNTO 0)
+	);
+END dec3to8;
+	
+ARCHITECTURE beh OF dec3to8 IS
+BEGIN
+	PROCESS(w, en)
+	BEGIN
+		IF (en = '1') THEN
+			CASE w IS
+				WHEN "000" => y <= "00000001";
+				WHEN "001" => y <= "00000010";
+				WHEN "010" => y <= "00000100";
+				WHEN "011" => y <= "00001000";
+				WHEN "100" => y <= "00010000";
+				WHEN "101" => y <= "00100000";
+				WHEN "110" => y <= "01000000";
+				WHEN others => y <= "10000000";
+			END CASE;
+		ELSE
+			y <= "00000000";
+		END IF;
+	END PROCESS;
+END beh;
+
+----////////////////////////////////////////////////
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE WORK.register_file.ALL;
+
+ENTITY regn IS
+	PORT
+	(
+		r					: IN STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+		rin, clk			: IN STD_LOGIC;
+		q					: OUT STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0)
+	);
+END regn;
+
+ARCHITECTURE beh OF regn IS
+BEGIN
+	PROCESS(clk,rin)
+	BEGIN
+		IF(RISING_EDGE(clk)) THEN
+			IF(rin = '1') THEN
+				q <= r;
+			END IF;
+		END IF;
+	END PROCESS;
+END beh;
+----///////////////////////////////////////////////
+LIBRARY ieee;
+USE ieee.std_logic_1164.all;
+USE WORK.register_file.ALL;
+
+LIBRARY lpm;
+USE lpm.all;
+
+ENTITY addersub IS
+	PORT
+	(
+		add_sub		: IN STD_LOGIC ;
+		dataa		: IN STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0);
+		datab		: IN STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0);
+		result		: OUT STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0)
+	);
+END addersub;
+
+
+ARCHITECTURE SYN OF addersub IS
+
+	SIGNAL sub_wire0	: STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0);
+
+	COMPONENT lpm_add_sub
+	GENERIC 
+	(
+		lpm_direction			: STRING;
+		lpm_hint				: STRING;
+		lpm_representation		: STRING;
+		lpm_type				: STRING;
+		lpm_width				: NATURAL
+	);
+	PORT
+	(
+			add_sub		: IN STD_LOGIC ;
+			dataa		: IN STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0);
+			datab		: IN STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0);
+			result		: OUT STD_LOGIC_VECTOR (NOBB - 1 DOWNTO 0)
+	);
+	END COMPONENT;
+--
+BEGIN
+	result    <= sub_wire0(NOBB - 1 DOWNTO 0);
+
+	LPM_ADD_SUB_component : LPM_ADD_SUB
+	GENERIC MAP
+	(
+		lpm_direction		=> "UNUSED",
+		lpm_hint 			=> "ONE_INPUT_IS_CONSTANT=NO,CIN_USED=NO",
+		lpm_representation 	=> "UNSIGNED",
+		lpm_type 			=> "LPM_ADD_SUB",
+		lpm_width			=> 9
+	)
+	PORT MAP 
+	(
+		add_sub => add_sub,
+		dataa 	=> dataa,
+		datab 	=> datab,
+		result	=> sub_wire0
+	);
+
+
+
+END SYN;
+--/////////////////////////////////////////////
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE WORK.register_file.ALL;
+
+ENTITY mux IS
+	PORT
+	(
+		mux_selector	: IN  STD_LOGIC_VECTOR(NOREG + 1 DOWNTO 0);
+		r				: IN  reg_file_type;
+		g 				: IN  STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+		din				: IN  STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+		bus_wires		: OUT STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0)
+	);
+END mux;
+ARCHITECTURE beh OF mux IS
+BEGIN
+	WITH mux_selector SELECT
+		bus_wires <= 
+			r(0)  WHEN "0000000001",
+			r(1)  WHEN "0000000010",
+			r(2)  WHEN "0000000100",
+			r(3)  WHEN "0000001000",
+			r(4)  WHEN "0000010000",
+			r(5)  WHEN "0000100000",
+			r(6)  WHEN "0001000000",
+			r(7)  WHEN "0010000000",
+			g	WHEN "0100000000",
+			din WHEN OTHERS;
+						
+END beh;
+--/////////////////////////////////////////////
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE WORK.register_file.ALL;
+
+ENTITY fsm IS
+    PORT
+	(
+		run, clk, reset							: IN  STD_LOGIC;
+		ir 										: IN  STD_LOGIC_VECTOR(NOBB - 1 DOWNTO 0);
+		done									: OUT STD_LOGIC;
+		ain, gin, gout, add_sub, irin, dinout	: OUT STD_LOGIC;
+		rin, rout								: OUT STD_LOGIC_VECTOR(NOREG - 1 DOWNTO 0)
+    );
+END fsm;
+
+ARCHITECTURE BEHAVIOR OF fsm IS
+	
+	COMPONENT dec3to8
+		PORT
+		(
+			w					: IN STD_LOGIC_VECTOR(2 DOWNTO 0);
+			en					: IN STD_LOGIC;
+			y					: OUT STD_LOGIC_VECTOR(7 DOWNTO 0)
+		);
+	END COMPONENT;
+
+	SIGNAL i				: STD_LOGIC_VECTOR(2 DOWNTO 0);
+	SIGNAL xreg, yreg		: STD_LOGIC_VECTOR(7 DOWNTO 0);
+	signal high				: STD_LOGIC;
+	TYPE State_type IS (t0, t1, t2, t3);
+	SIGNAL tstep_q, tstep_d	: State_type;
+	 
+BEGIN
+
+	high 	<= '1';
+	i 		<= ir(8 DOWNTO 6);
+	decX   	: dec3to8 PORT MAP (ir(5 DOWNTO 3), high, xreg);
+	decY		: dec3to8 PORT MAP (ir(2 DOWNTO 0), high, yreg);
+	
+	PROCESS(clk, reset)
+	BEGIN
+	 
+		IF(reset = '1') THEN
+			tstep_q <= t0;
+		ELSIF(RISING_EDGE(clk)) THEN
+			tstep_q <= tstep_d;
+		END IF;
+		  
+	END PROCESS;
+	
+	PROCESS(tstep_q, run, i)
+	BEGIN
+		CASE tstep_q IS
+			WHEN t0 => 	IF(run = '0') THEN
+							tstep_d <= t0;
+						ELSE
+							tstep_d <= t1;
+						END IF;
+			WHEN t1 => 	IF( run = '0') THEN
+							tstep_d <= t1;
+							elsif(i="000" or i="001") then
+								tstep_d <= t0;
+						ELSE 
+							tstep_d <= t2;
+						END IF;
+			WHEN t2 => 	IF(run = '0') THEN 
+							tstep_d <= t2;
+						ELSE	
+							tstep_d <= t3;
+						END IF;
+			WHEN others => 	IF(run = '0') THEN 
+							tstep_d <= t3;
+						ELSE 
+							tstep_d <= t0;
+						END IF;
+		END CASE;
+	END PROCESS;
+						  
+	PROCESS(tstep_q, i, xreg, yreg)
+	BEGIN
+		done    	<= '0';
+		ain     	<= '0';
+		gin     	<= '0';
+		gout   		<= '0';
+		add_sub		<= '0';
+		irin		<= '0';
+		dinout		<= '0';
+		rin 		<= "00000000";
+		rout 		<= "00000000";
+		CASE tstep_q IS
+			WHEN t0 => 
+				irin <= '1';
+			WHEN t1 =>
+				CASE i IS 
+					WHEN "000" =>
+						rout <= yreg;
+						rin  <= xreg;
+						done <= '1';
+					WHEN "001" =>
+						dinout <= '1';
+						rin    <= xreg;
+						done   <= '1';
+					WHEN "010" =>
+						rout <= xreg;
+						ain  <= '1';
+					WHEN OTHERS =>
+						rout <= xreg;
+						ain  <= '1';
+				END CASE;
+			WHEN t2 =>
+				CASE i IS
+					WHEN "010" =>
+						rout <= yreg;
+						gin  <= '1';
+					WHEN OTHERS =>
+						rout 	<= yreg;
+						add_sub <= '1';
+						gin 	<= '1';
+				END CASE;
+			WHEN others =>
+				CASE i IS
+					WHEN "010" =>
+						gout <= '1';
+						rin  <= xreg;
+						done <= '1';
+					WHEN OTHERS =>
+						gout <= '1';
+						rin  <= xreg;
+						done <= '1';
+				END CASE;
+			END CASE;
+		END PROCESS;
+		
+END BEHAVIOR;
+	
+
+	
